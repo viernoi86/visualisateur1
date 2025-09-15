@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Visualisateur de code — Full screen</title>
+  <!-- Highlight.js CSS (light by default) -->
+  <link id="hl-style" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css">
+  <style>
+    :root{
+      --bg:#f6f8fa; --fg:#0b0c0d; --accent:#0366d6;
+    }
+    [data-theme="dark"]{ --bg:#0b1220; --fg:#e6eef8; --accent:#58a6ff; }
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;}
+    body{background:var(--bg);color:var(--fg);display:flex;flex-direction:column}
+
+    header{display:flex;gap:.5rem;align-items:center;padding:.5rem;background:rgba(0,0,0,0.03);}
+    header .title{font-weight:600;font-size:1rem}
+    .tools{margin-left:auto;display:flex;gap:.5rem;align-items:center}
+    button,select,input[type=range]{background:#fff;border:1px solid rgba(0,0,0,0.08);padding:.4rem .6rem;border-radius:6px;cursor:pointer}
+    [data-theme="dark"] button{background:#071026;border:1px solid rgba(255,255,255,0.06)}
+
+    main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+    #viewer-wrap{flex:1;overflow:auto;padding:1rem}
+    pre{white-space:pre-wrap;word-break:break-word;min-height:100%}
+    pre code{display:block;font-family:SFMono-Regular,Menlo,Monaco,monospace;font-size:14px;line-height:1.5}
+
+    .overlay{position:fixed;right:1rem;bottom:1rem;background:rgba(0,0,0,0.6);color:#fff;padding:.5rem;border-radius:8px}
+    .hint{opacity:.8;font-size:.85rem}
+
+    .small{font-size:.85rem;padding:.25rem .5rem}
+    .hidden{display:none}
+
+    /* search bar */
+    #searchBar{position:fixed;left:50%;transform:translateX(-50%);top:8px;background:var(--bg);border:1px solid rgba(0,0,0,0.08);padding:.4rem;border-radius:8px;display:flex;gap:.4rem;align-items:center}
+    #searchBar input{padding:.4rem .6rem;border-radius:6px;border:1px solid rgba(0,0,0,0.08)}
+
+    @media (max-width:700px){header{flex-wrap:wrap}.tools{width:100%;justify-content:flex-end}}
+  </style>
+</head>
+<body data-theme="light">
+  <header>
+    <div class="title">Visualisateur de code — Écran complet</div>
+
+    <div class="tools">
+      <label class="small" style="display:flex;gap:.4rem;align-items:center;">Ouvrir
+        <input id="fileInput" type="file" accept="*/*" style="display:none">
+        <button id="openBtn" class="small">Fichier</button>
+      </label>
+
+      <button id="pasteBtn" class="small">Coller</button>
+      <button id="copyBtn" class="small">Copier</button>
+      <button id="downloadBtn" class="small">Télécharger</button>
+
+      <label class="small">Taille
+        <input id="fontRange" type="range" min="10" max="30" value="14" style="width:110px">
+      </label>
+
+      <select id="wrapSel" class="small">
+        <option value="wrap">Retour à la ligne</option>
+        <option value="no-wrap">Pas de retour</option>
+      </select>
+
+      <button id="themeBtn" class="small">Thème</button>
+      <button id="fsBtn" class="small">Plein écran</button>
+    </div>
+  </header>
+
+  <div id="searchBar" class="hidden">
+    <input id="searchInput" placeholder="Recherche... (Enter pour suivant, Shift+Enter pour précédent)">
+    <button id="closeSearch" class="small">✕</button>
+  </div>
+
+  <main>
+    <div id="viewer-wrap">
+      <pre id="codeBlock"><code id="codeElm">// Collez ou ouvrez un fichier pour l'afficher ici.
+console.log('Bienvenue dans le visualisateur de code !');
+</code></pre>
+    </div>
+  </main>
+
+  <div class="overlay hint">Raccourcis: Ctrl/Cmd+O ouvrir • Ctrl/Cmd+F recherche • F11 plein écran</div>
+
+  <!-- Highlight.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+  <script>
+    // Elements
+    const body = document.body;
+    const fileInput = document.getElementById('fileInput');
+    const openBtn = document.getElementById('openBtn');
+    const pasteBtn = document.getElementById('pasteBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const codeElm = document.getElementById('codeElm');
+    const codeBlock = document.getElementById('codeBlock');
+    const fontRange = document.getElementById('fontRange');
+    const themeBtn = document.getElementById('themeBtn');
+    const fsBtn = document.getElementById('fsBtn');
+    const wrapSel = document.getElementById('wrapSel');
+    const searchBar = document.getElementById('searchBar');
+    const searchInput = document.getElementById('searchInput');
+    const closeSearch = document.getElementById('closeSearch');
+
+    // Initial highlight
+    hljs.highlightElement(codeElm);
+
+    // Helpers
+    function setCode(text, lang=null){
+      codeElm.textContent = text;
+      if(lang) codeElm.className = 'language-'+lang;
+      else codeElm.className = '';
+      try{ if(lang) hljs.highlightElement(codeElm); else hljs.highlightElement(codeElm); }catch(e){ /* ignore */ }
+    }
+
+    // Open file
+    openBtn.addEventListener('click', ()=> fileInput.click());
+    fileInput.addEventListener('change', e => {
+      const f = e.target.files[0];
+      if(!f) return;
+      const reader = new FileReader();
+      reader.onload = evt => setCode(evt.target.result);
+      reader.readAsText(f);
+    });
+
+    // Drag & drop
+    ['dragenter','dragover'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();e.dataTransfer.dropEffect='copy'}));
+    document.addEventListener('drop', e=>{
+      e.preventDefault();
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if(f){
+        const r = new FileReader(); r.onload = ev=> setCode(ev.target.result); r.readAsText(f);
+      } else if(e.dataTransfer.getData('text')){
+        setCode(e.dataTransfer.getData('text'));
+      }
+    });
+
+    // Paste
+    pasteBtn.addEventListener('click', async ()=>{
+      try{
+        const text = await navigator.clipboard.readText();
+        setCode(text);
+      }catch(e){ alert('Impossible de lire le presse-papier. Utilisez Ctrl+V pour coller.'); }
+    });
+
+    // Copy
+    copyBtn.addEventListener('click', async ()=>{
+      try{ await navigator.clipboard.writeText(codeElm.textContent); alert('Copié !'); }catch(e){ alert('Échec copie — utilisez manuellement.'); }
+    });
+
+    // Download
+    downloadBtn.addEventListener('click', ()=>{
+      const blob = new Blob([codeElm.textContent],{type:'text/plain'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'code.txt'; a.click(); URL.revokeObjectURL(a.href);
+    });
+
+    // Font size
+    fontRange.addEventListener('input', ()=>{ codeElm.style.fontSize = fontRange.value + 'px'; });
+
+    // Theme toggle
+    themeBtn.addEventListener('click', ()=>{
+      const isDark = body.getAttribute('data-theme') === 'dark';
+      body.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      // swap highlight style quickly
+      const link = document.getElementById('hl-style');
+      link.href = isDark ?
+        'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css'
+        : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css';
+    });
+
+    // Wrap
+    wrapSel.addEventListener('change', ()=>{
+      codeElm.style.whiteSpace = wrapSel.value === 'wrap' ? 'pre-wrap' : 'pre';
+    });
+
+    // Fullscreen
+    fsBtn.addEventListener('click', ()=>{
+      if(!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    });
+    document.addEventListener('keydown', e=>{
+      if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='o'){ e.preventDefault(); fileInput.click(); }
+      if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='f'){ e.preventDefault(); openSearch(); }
+      if(e.key==='F11'){ e.preventDefault(); fsBtn.click(); }
+    });
+
+    // Simple search
+    function openSearch(){ searchBar.classList.remove('hidden'); searchInput.focus(); }
+    function closeSearchBar(){ searchBar.classList.add('hidden'); searchInput.value=''; clearHighlights(); }
+    closeSearch.addEventListener('click', closeSearchBar);
+
+    let lastIndex = -1;
+    function clearHighlights(){ // remove <mark>
+      const html = codeElm.textContent.replace(/\u0000/g,''); // noop
+      // re-render without marks
+      setCode(codeElm.textContent);
+    }
+
+    searchInput.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){
+        e.preventDefault(); const q = searchInput.value; if(!q) return;
+        const text = codeElm.textContent; const flags = 'g';
+        const re = new RegExp(q.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&'), flags);
+        let match; let start = 0; let i = 0; const matches = [];
+        while((match = re.exec(text)) !== null){ matches.push([match.index, match.index+match[0].length]); if(re.lastIndex===match.index) re.lastIndex++; }
+        if(matches.length===0){ alert('Aucun résultat'); return; }
+        if(e.shiftKey) lastIndex = (lastIndex-1 + matches.length) % matches.length; else lastIndex = (lastIndex+1) % matches.length;
+        const [s,eidx] = matches[lastIndex];
+        // create highlighted html
+        const before = escapeHtml(text.slice(0,s));
+        const hit = escapeHtml(text.slice(s,eidx));
+        const after = escapeHtml(text.slice(eidx));
+        codeElm.innerHTML = before + '<mark>'+hit+'</mark>' + after;
+        hljs.highlightElement(codeElm);
+        // scroll to mark
+        const mark = codeElm.querySelector('mark'); if(mark){ mark.scrollIntoView({behavior:'smooth',block:'center'}); }
+      }
+    });
+
+    function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // Start: set font size from range
+    codeElm.style.fontSize = fontRange.value + 'px';
+
+    // Allow dropping URL text
+    window.addEventListener('paste', e=>{
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      if(text && text.includes('\n') && !/\s{200,}/.test(text)){
+        // assume paste of code
+        // don't clobber if user explicitly clicked elsewhere
+      }
+    });
+
+    // Improve highlight when language is obvious (file extension detection)
+    function detectLangByName(name){
+      const ext = (name||'').split('.').pop().toLowerCase();
+      const map = {js:'javascript',py:'python',html:'xml',css:'css',json:'json',java:'java',rb:'ruby',cpp:'cpp',c:'c',cs:'csharp',php:'php',rs:'rust',go:'go',ts:'typescript'};
+      return map[ext]||null;
+    }
+
+    // If user opens via file input, try to set language
+    fileInput.addEventListener('change', e=>{
+      const f = e.target.files[0]; if(!f) return;
+      const reader = new FileReader(); reader.onload = ev=>{
+        const lang = detectLangByName(f.name);
+        setCode(ev.target.result, lang);
+      }; reader.readAsText(f);
+    });
+
+    // Initial sample
+    setCode(codeElm.textContent, 'javascript');
+
+  </script>
+</body>
+</html>
